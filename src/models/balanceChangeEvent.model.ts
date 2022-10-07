@@ -11,11 +11,6 @@ export enum BlockchainType {
   Ethereum,
 }
 
-export enum BalanceChangeEventType {
-  Sender = 0,
-  Receiver,
-}
-
 export interface BalanceChangeEvent {
   currencyString: string;
   accountAddress: string;

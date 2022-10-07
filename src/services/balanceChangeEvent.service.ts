@@ -124,7 +124,7 @@ export class BalanceChangeEventService {
       receiverEvent.tokenChanges.push({
         symbol,
         mint: "",
-        preAmount: receiverBalanceVal - val,
+        preAmount: Math.max(0, receiverBalanceVal - val),
         postAmount: receiverBalanceVal,
       });
       events.push(receiverEvent);
