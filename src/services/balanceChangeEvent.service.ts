@@ -63,11 +63,20 @@ export class BalanceChangeEventService {
       return;
     }
 
+    // ERC20 Token
     const transferLogs = transactionReceipt.logs.filter(
       (log) => log.topics?.length === 3 && log.topics[0] === TRANSFER_HASH
     );
 
-    // ERC20 Token
+    const senderEvent = await this.createSenderBalanceChangeEvent(
+      transaction.from,
+      transaction,
+      transactionCost,
+      transactionValue
+    );
+
+    events.push(senderEvent);
+
     for (const log of transferLogs) {
       if (log.topics?.length < 3 || log.topics[0] !== TRANSFER_HASH) return;
 
@@ -90,30 +99,37 @@ export class BalanceChangeEventService {
         .div(Web3.utils.toBN(Math.pow(10, decimals)))
         .toNumber();
 
-      const senderEvent = await this.createSenderBalanceChangeEvent(
-        `${from}`,
-        transaction,
-        transaction.from === `${from}` ? 0 : transactionCost,
-        transaction.from === `${from}` ? 0 : transactionValue
-      );
       const senderBalance = await contract.methods.balanceOf(from).call();
       const senderBalanceVal = Web3.utils
         .toBN(senderBalance)
         .div(Web3.utils.toBN(Math.pow(10, decimals)))
         .toNumber();
-      senderEvent.tokenChanges.push({
+
+      const senderTokenChange = {
         symbol,
         mint: "",
         preAmount: senderBalanceVal + val,
         postAmount: senderBalanceVal,
-      });
-      events.push(senderEvent);
+      };
+
+      if (senderEvent.accountAddress === `${from}`) {
+        senderEvent.tokenChanges.push(senderTokenChange);
+      } else {
+        const senderEvent = await this.createSenderBalanceChangeEvent(
+          `${from}`,
+          transaction,
+          0,
+          0
+        );
+        senderEvent.tokenChanges.push();
+        events.push(senderEvent);
+      }
 
       const receiverEvent = await this.createReceiverBalanceChangeEvent(
         `${to}`,
         transaction,
         transactionCost,
-        transactionValue
+        0
       );
       receiverEvent.accountAddress = `${to}`;
       const receiverBalance = await contract.methods.balanceOf(to).call();
@@ -140,6 +156,7 @@ export class BalanceChangeEventService {
     event.blockHash = transaction.blockHash;
     event.sequenceNumber = transaction.blockNumber;
     event.tokenChanges = [];
+    event.currencyString = "ETH";
     return event;
   };
 
