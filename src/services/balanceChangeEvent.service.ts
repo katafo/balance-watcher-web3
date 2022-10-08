@@ -157,6 +157,7 @@ export class BalanceChangeEventService {
     event.sequenceNumber = transaction.blockNumber;
     event.tokenChanges = [];
     event.currencyString = "ETH";
+    event.changeSignature = transaction.hash;
     return event;
   };
 
