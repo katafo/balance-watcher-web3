@@ -202,4 +202,9 @@ export class Web3Service {
   createERC20Contract = (address: string) => {
     return new this.web3.eth.Contract(ERC20_STANDARD_ABI, address);
   };
+
+  getNativeBalance = async (address: string, blockNumber: number) => {
+    const balanceStr = await this.web3.eth.getBalance(address, blockNumber);
+    return Number(Web3.utils.fromWei(balanceStr, "ether"));
+  };
 }

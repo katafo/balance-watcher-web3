@@ -2,7 +2,8 @@ import Web3 from "web3";
 import { BlockTransactionObject, Transaction } from "web3-eth";
 import {
   BalanceChangeEvent,
-  BlockchainType,
+  ReceiverBalanceChangeEvent,
+  SenderBalanceChangeEvent,
 } from "../models/balanceChangeEvent.model";
 import { Web3Service } from "./web3.service";
 
@@ -44,17 +45,29 @@ export class BalanceChangeEventService {
       Web3.utils.fromWei(transaction.value, "ether")
     );
 
+    const senderBalance = await this.web3Service.getNativeBalance(
+      transaction.from,
+      transaction.blockNumber
+    );
+    const senderEvent = new SenderBalanceChangeEvent(
+      transaction.from,
+      senderBalance,
+      transaction,
+      transactionCost,
+      transactionValue
+    );
+
+    events.push(senderEvent);
+
     // Native token
     if (transactionValue > 0) {
-      const senderEvent = await this.createSenderBalanceChangeEvent(
-        transaction.from,
-        transaction,
-        transactionCost,
-        transactionValue
-      );
-      events.push(senderEvent);
-      const receiverEvent = await this.createReceiverBalanceChangeEvent(
+      const receiverBalance = await this.web3Service.getNativeBalance(
         transaction.to,
+        transaction.blockNumber
+      );
+      const receiverEvent = new ReceiverBalanceChangeEvent(
+        transaction.to,
+        receiverBalance,
         transaction,
         transactionCost,
         transactionValue
@@ -63,19 +76,10 @@ export class BalanceChangeEventService {
       return;
     }
 
-    // ERC20 Token
+    // ERC20 Token: read all "Transfer" methods from logs data, then emit events
     const transferLogs = transactionReceipt.logs.filter(
       (log) => log.topics?.length === 3 && log.topics[0] === TRANSFER_HASH
     );
-
-    const senderEvent = await this.createSenderBalanceChangeEvent(
-      transaction.from,
-      transaction,
-      transactionCost,
-      transactionValue
-    );
-
-    events.push(senderEvent);
 
     for (const log of transferLogs) {
       if (log.topics?.length < 3 || log.topics[0] !== TRANSFER_HASH) return;
@@ -112,26 +116,42 @@ export class BalanceChangeEventService {
         postAmount: senderBalanceVal,
       };
 
-      if (senderEvent.accountAddress === `${from}`) {
+      const transferFrom = `${from}`;
+      const transferTo = `${to}`;
+
+      if (senderEvent.accountAddress === transferFrom) {
+        // if sender is owner of transaction, just push more token change
         senderEvent.tokenChanges.push(senderTokenChange);
       } else {
-        const senderEvent = await this.createSenderBalanceChangeEvent(
-          `${from}`,
+        // if sender is not owner, create new sender event with 0 cost & value
+        const senderNativeBalance = await this.web3Service.getNativeBalance(
+          transferFrom,
+          transaction.blockNumber
+        );
+        const senderEvent = new SenderBalanceChangeEvent(
+          transferFrom,
+          senderNativeBalance,
           transaction,
           0,
           0
         );
-        senderEvent.tokenChanges.push();
+        senderEvent.tokenChanges.push(senderTokenChange);
         events.push(senderEvent);
       }
 
-      const receiverEvent = await this.createReceiverBalanceChangeEvent(
-        `${to}`,
+      // receiver token balance change
+      const receiverNativeBalance = await this.web3Service.getNativeBalance(
+        transferFrom,
+        transaction.blockNumber
+      );
+      const receiverEvent = new ReceiverBalanceChangeEvent(
+        transferTo,
+        receiverNativeBalance,
         transaction,
         transactionCost,
         0
       );
-      receiverEvent.accountAddress = `${to}`;
+
       const receiverBalance = await contract.methods.balanceOf(to).call();
       const receiverBalanceVal = Web3.utils
         .toBN(receiverBalance)
@@ -147,61 +167,5 @@ export class BalanceChangeEventService {
     }
 
     events.forEach((e) => emit(e));
-  };
-
-  createBalanceChangeEvent = (address: string, transaction: Transaction) => {
-    const event = <BalanceChangeEvent>{};
-    event.accountAddress = address;
-    event.accountAddressBlockchain = BlockchainType.Ethereum;
-    event.blockHash = transaction.blockHash;
-    event.sequenceNumber = transaction.blockNumber;
-    event.tokenChanges = [];
-    event.currencyString = "ETH";
-    event.changeSignature = transaction.hash;
-    return event;
-  };
-
-  createSenderBalanceChangeEvent = async (
-    address: string,
-    transaction: Transaction,
-    transactionCost: number,
-    transactionValue: number
-  ) => {
-    const senderEvent = this.createBalanceChangeEvent(address, transaction);
-    senderEvent.transactionCost = transactionCost;
-
-    const senderBalanceStr = await this.web3Service.web3.eth.getBalance(
-      senderEvent.accountAddress,
-      senderEvent.blockHash
-    );
-    const senderBalance = Number(Web3.utils.fromWei(senderBalanceStr, "ether"));
-    senderEvent.currentNativeBalance = senderBalance;
-    senderEvent.previousNativeBalance =
-      senderBalance + transactionCost + transactionValue;
-    return senderEvent;
-  };
-
-  createReceiverBalanceChangeEvent = async (
-    address: string,
-    transaction: Transaction,
-    transactionCost: number,
-    transactionValue: number
-  ) => {
-    const receiverEvent = this.createBalanceChangeEvent(address, transaction);
-    receiverEvent.transactionCost = transactionCost;
-
-    const receiverBalanceStr = await this.web3Service.web3.eth.getBalance(
-      receiverEvent.accountAddress,
-      receiverEvent.blockHash
-    );
-    const receiverBalance = Number(
-      Web3.utils.fromWei(receiverBalanceStr, "ether")
-    );
-    receiverEvent.currentNativeBalance = receiverBalance;
-    receiverEvent.previousNativeBalance = Math.max(
-      0,
-      receiverBalance - transactionValue
-    );
-    return receiverEvent;
   };
 }
