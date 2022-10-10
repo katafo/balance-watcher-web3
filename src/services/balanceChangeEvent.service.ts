@@ -103,7 +103,9 @@ export class BalanceChangeEventService {
         .div(Web3.utils.toBN(Math.pow(10, decimals)))
         .toNumber();
 
-      const senderBalance = await contract.methods.balanceOf(from).call();
+      const senderBalance = await contract.methods
+        .balanceOf(from)
+        .call({}, transaction.blockNumber);
       const senderBalanceVal = Web3.utils
         .toBN(senderBalance)
         .div(Web3.utils.toBN(Math.pow(10, decimals)))
@@ -152,7 +154,9 @@ export class BalanceChangeEventService {
         0
       );
 
-      const receiverBalance = await contract.methods.balanceOf(to).call();
+      const receiverBalance = await contract.methods
+        .balanceOf(to)
+        .call({}, transaction.blockNumber);
       const receiverBalanceVal = Web3.utils
         .toBN(receiverBalance)
         .div(Web3.utils.toBN(Math.pow(10, decimals)))
