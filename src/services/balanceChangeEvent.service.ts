@@ -82,8 +82,6 @@ export class BalanceChangeEventService {
     );
 
     for (const log of transferLogs) {
-      if (log.topics?.length < 3 || log.topics[0] !== TRANSFER_HASH) return;
-
       const from = this.web3Service.decodeParameter("address", log.topics[1]);
       const to = this.web3Service.decodeParameter("address", log.topics[2]);
 
